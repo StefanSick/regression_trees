@@ -15,6 +15,8 @@ for file_path in PATH_DATA.glob("*.csv"):
     data_frames[key_name] = df
     print(f"Geladen: {key_name} -> Shape: {df.shape}")
 
+
+### we will have to add the imputer to the cv for train and test instead
 df_cancer = data_frames["cancer_reg"].drop(columns= ["pctsomecol18_24"]) # had to drop pctsomecol18_24 because of the amount of missing data
 df_cancer.isnull().sum()
 impute_cols = ['pctemployed16_over', 'pctprivatecoveragealone']
