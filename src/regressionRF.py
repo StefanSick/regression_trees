@@ -56,10 +56,16 @@ class RegTree:
 
     def _grow_tree(self, X, y, depth=0):
         n_samples, n_features = X.shape
-        
+
+        # If no samples, just return a leaf with value 0 (or some default)
+        if n_samples == 0:
+            return Node(value=0.0)
+
         # Stopping Criteria
-        if (depth >= self.max_depth or n_samples < self.min_samples_split or np.std(y) == 0):
-            return Node(value=np.mean(y))
+        if (depth >= self.max_depth or
+            n_samples < self.min_samples_split or
+            np.std(y) == 0):
+            return Node(value=float(np.mean(y)))
 
         # Best Split
         feat_idx, thresh = self._best_split(X, y, n_features)
@@ -161,12 +167,66 @@ class RegTree:
                 return self._traverse_tree(x, node.left)
             else:
                 return self._traverse_tree(x, node.right)
+            
+
+class RegRF:
+    def __init__(self, n_estimators=100, max_depth=10, min_samples_split=2,
+                 cat_features=None, max_features=None, random_state=None):
+        self.n_estimators = n_estimators
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.cat_features = set(cat_features) if cat_features else set()
+        self.max_features = max_features
+        self.random_state = random_state
+        self.trees = []
+        self.feature_subsets = []
+        if random_state is not None:
+            np.random.seed(random_state)
+
+    def _bootstrap_sample(self, X, y):
+        n_samples = X.shape[0]
+        indices = np.random.randint(0, n_samples, size=n_samples)
+        return X[indices], y[indices]
+
+    def _sample_features(self, n_features):
+        if self.max_features is None or self.max_features >= n_features:
+            return np.arange(n_features)
+        return np.random.choice(n_features, self.max_features, replace=False)
+
+    def fit(self, X, y):
+        X = np.array(X, dtype=object)
+        y = np.array(y, dtype=float)
+
+        n_features = X.shape[1]
+        self.trees = []
+        self.feature_subsets = []
+
+        for _ in range(self.n_estimators):
+            # bootstrap rows
+            X_sample, y_sample = self._bootstrap_sample(X, y)
+            # random subset of columns (features)
+            feat_idx_subset = self._sample_features(n_features)
+            self.feature_subsets.append(feat_idx_subset)
+
+            # map categorical feature indices to the subset
+            cat_in_subset = [np.where(feat_idx_subset == f)[0][0]
+                             for f in self.cat_features if f in feat_idx_subset]
+
+            tree = RegTree(max_depth=self.max_depth,
+                           min_samples_split=self.min_samples_split,
+                           cat_features=cat_in_subset)
+            tree.fit(X_sample[:, feat_idx_subset], y_sample)
+            self.trees.append(tree)
+
+    def predict(self, X):
+        X = np.array(X, dtype=object)
+        all_preds = []
+        for tree, feat_idx_subset in zip(self.trees, self.feature_subsets):
+            preds = tree.predict(X[:, feat_idx_subset])
+            all_preds.append(preds)
+        return np.mean(all_preds, axis=0)
 
 def cross_val_rmse(model_class, X, y, cv=5, random_state=42, **model_kwargs):
-    """
-    Simple K-fold cross-validation for regression.
-
-    """
     X = np.array(X, dtype=object)
     y = np.array(y, dtype=float)
 
@@ -187,29 +247,33 @@ def cross_val_rmse(model_class, X, y, cv=5, random_state=42, **model_kwargs):
 
     return np.array(rmses)
 
-
 if __name__ == "__main__":
-    # Setup your independent and dependent variable
+
     y = df_possum["footlgth"].copy()
     X = df_possum.drop(columns=["footlgth"])
 
-    # indices of categorical columns in X
     cat_features = [1, 2]
 
-    # ----- Cross-validation on full data -----
+    # 5-fold CV on the whole dataset
     cv_rmses = cross_val_rmse(
-        RegTree,
+        RegRF,
         X,
         y,
         cv=5,
         random_state=42,
+        n_estimators=50,
         max_depth=5,
         min_samples_split=2,
         cat_features=cat_features,
+        max_features=None
     )
 
     print("CV RMSEs:", cv_rmses)
     print("Mean CV RMSE:", cv_rmses.mean())
+
+    # Setup your independent and dependent variable
+    y = df_possum["footlgth"].copy()
+    X = df_possum.drop(columns=["footlgth"])
 
     # Split the data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -217,21 +281,30 @@ if __name__ == "__main__":
     print(f"Train shapes: X={X_train.shape}, y={y_train.shape}")
     print(f"Test shapes:  X={X_test.shape},  y={y_test.shape}")
 
-    # Set max depth and all features that are categorical
-    regressor = RegTree(max_depth=5, cat_features=[1,2])
-    
-    print("Training Regression Tree...")
-    regressor.fit(X_train, y_train)
-    X_test_arr = np.array(X_test) 
-    
-    # Predict the values
-    predictions = regressor.predict(X_test_arr)
+    # indices of categorical columns in X
+    cat_features = [1, 2]
 
+    rf = RegRF(
+        n_estimators=50,
+        max_depth=5,
+        min_samples_split=2,
+        cat_features=cat_features,
+        max_features=5,    
+        random_state=42
+    )
+
+    print("Training Random Forest...")
+    rf.fit(X_train, y_train)
+    X_test_arr = np.array(X_test, dtype=object)
+
+    # Predict the values
+    predictions = rf.predict(X_test_arr)
+    
     # Create result df
     results_df = pd.DataFrame(y_test).copy()
-    results_df.columns = ["real_values"] 
+    results_df.columns = ["real_values"]
     results_df["predicted_values"] = predictions
-
+    
     # Add Error column
     results_df["Error"] = results_df["real_values"] - results_df["predicted_values"]
     results_df["Squared_Error"] = results_df["Error"] ** 2
@@ -242,4 +315,4 @@ if __name__ == "__main__":
     # Calculate overall performance
     mse = results_df["Squared_Error"].mean()
     rmse = np.sqrt(mse)
-    print("Regression Tree Test-RMSE:", rmse)
+    print("Random Forest Test-RMSE:", rmse)

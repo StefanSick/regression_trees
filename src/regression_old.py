@@ -2,11 +2,11 @@ import pandas as pd
 from pathlib import Path
 from sklearn.impute import KNNImputer
 import numpy as np
-from sklearn.model_selection import KFold
+from collections import Counter
 from sklearn.model_selection import train_test_split
 
-ROOT = Path(__file__).resolve().parents[1]
-PATH_DATA = ROOT / "data"
+PATH = Path.cwd().parent
+PATH_DATA = PATH / "data" 
 
 data_frames ={}
 for file_path in PATH_DATA.glob("*.csv"):
@@ -14,7 +14,6 @@ for file_path in PATH_DATA.glob("*.csv"):
     df = pd.read_csv(file_path)
     data_frames[key_name] = df
     print(f"Geladen: {key_name} -> Shape: {df.shape}")
-
 
 df_cancer = data_frames["cancer_reg"].drop(columns= ["pctsomecol18_24"]) # had to drop pctsomecol18_24 because of the amount of missing data
 df_cancer.isnull().sum()
@@ -161,55 +160,13 @@ class RegTree:
                 return self._traverse_tree(x, node.left)
             else:
                 return self._traverse_tree(x, node.right)
-
-def cross_val_rmse(model_class, X, y, cv=5, random_state=42, **model_kwargs):
-    """
-    Simple K-fold cross-validation for regression.
-
-    """
-    X = np.array(X, dtype=object)
-    y = np.array(y, dtype=float)
-
-    kf = KFold(n_splits=cv, shuffle=True, random_state=random_state)
-    rmses = []
-
-    for train_idx, val_idx in kf.split(X):
-        X_train_cv, X_val_cv = X[train_idx], X[val_idx]
-        y_train_cv, y_val_cv = y[train_idx], y[val_idx]
-
-        model = model_class(**model_kwargs)
-        model.fit(X_train_cv, y_train_cv)
-        preds = model.predict(X_val_cv)
-
-        mse = np.mean((y_val_cv - preds) ** 2)
-        rmse = np.sqrt(mse)
-        rmses.append(rmse)
-
-    return np.array(rmses)
-
+            
 
 if __name__ == "__main__":
+
     # Setup your independent and dependent variable
     y = df_possum["footlgth"].copy()
     X = df_possum.drop(columns=["footlgth"])
-
-    # indices of categorical columns in X
-    cat_features = [1, 2]
-
-    # ----- Cross-validation on full data -----
-    cv_rmses = cross_val_rmse(
-        RegTree,
-        X,
-        y,
-        cv=5,
-        random_state=42,
-        max_depth=5,
-        min_samples_split=2,
-        cat_features=cat_features,
-    )
-
-    print("CV RMSEs:", cv_rmses)
-    print("Mean CV RMSE:", cv_rmses.mean())
 
     # Split the data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -220,7 +177,7 @@ if __name__ == "__main__":
     # Set max depth and all features that are categorical
     regressor = RegTree(max_depth=5, cat_features=[1,2])
     
-    print("Training Regression Tree...")
+    print("Training...")
     regressor.fit(X_train, y_train)
     X_test_arr = np.array(X_test) 
     
@@ -242,4 +199,4 @@ if __name__ == "__main__":
     # Calculate overall performance
     mse = results_df["Squared_Error"].mean()
     rmse = np.sqrt(mse)
-    print("Regression Tree Test-RMSE:", rmse)
+    print(rmse)
