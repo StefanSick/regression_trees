@@ -1,9 +1,10 @@
 import pandas as pd
 from pathlib import Path
-from sklearn.impute import KNNImputer
+from sklearn.impute import KNNImputer, SimpleImputer
 import numpy as np
 from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 ROOT = Path(__file__).resolve().parents[1]
 PATH_DATA = ROOT / "data"
@@ -16,21 +17,11 @@ for file_path in PATH_DATA.glob("*.csv"):
     print(f"Geladen: {key_name} -> Shape: {df.shape}")
 
 
-<<<<<<< HEAD
-=======
-### we will have to add the imputer to the cv for train and test instead
->>>>>>> 49475f6487c1d78ec65c2b0dd94ad93303a91eeb
-df_cancer = data_frames["cancer_reg"].drop(columns= ["pctsomecol18_24"]) # had to drop pctsomecol18_24 because of the amount of missing data
-df_cancer.isnull().sum()
-impute_cols = ['pctemployed16_over', 'pctprivatecoveragealone']
-imputer = KNNImputer(n_neighbors=5)
-df_cancer[impute_cols] = imputer.fit_transform(df_cancer[impute_cols])
-
-
-df_possum = data_frames["possum"].drop(columns=["case"])
-impute_cols = ['age', 'footlgth']
-imputer = KNNImputer(n_neighbors=5)
-df_possum[impute_cols] = imputer.fit_transform(df_possum[impute_cols])
+# df_cancer = data_frames["cancer_reg"].drop(columns= ["pctsomecol18_24"]) # had to drop pctsomecol18_24 because of the amount of missing data
+# df_cancer.isnull().sum()
+# impute_cols = ['pctemployed16_over', 'pctprivatecoveragealone']
+# imputer = KNNImputer(n_neighbors=5)
+# df_cancer[impute_cols] = imputer.fit_transform(df_cancer[impute_cols])
 
 
 class Node:
@@ -62,7 +53,7 @@ class RegTree:
         n_samples, n_features = X.shape
         
         # Stopping Criteria
-        if (depth >= self.max_depth or n_samples < self.min_samples_split or np.std(y) == 0):
+        if (depth >= self.max_depth or n_samples < self.min_samples_split or np.std(y) < 1e-8):
             return Node(value=np.mean(y))
 
         # Best Split
@@ -166,88 +157,126 @@ class RegTree:
             else:
                 return self._traverse_tree(x, node.right)
 
-def cross_val_rmse(model_class, X, y, cv=5, random_state=42, **model_kwargs):
+def preprocess_train_val(X_train, X_val, num_cols, cat_cols):
     """
-    Simple K-fold cross-validation for regression.
+    - Numeric: KNN imputation
+    - Categorical: Most frequent
+    """
 
-    """
-    X = np.array(X, dtype=object)
-    y = np.array(y, dtype=float)
+    X_train = X_train.copy()
+    X_val   = X_val.copy()
+
+    # categorical
+    cat_imputer = SimpleImputer(strategy="most_frequent")
+    X_train[cat_cols] = cat_imputer.fit_transform(X_train[cat_cols])
+    X_val[cat_cols]   = cat_imputer.transform(X_val[cat_cols])
+
+    # numeric
+    num_imputer = KNNImputer(n_neighbors=5)
+    X_train[num_cols] = num_imputer.fit_transform(X_train[num_cols])
+    X_val[num_cols]   = num_imputer.transform(X_val[num_cols])
+
+    return X_train, X_val
+
+def cross_val_rmse(model_class, X, y, num_cols, cat_cols,
+                  cv=5, random_state=42, **model_kwargs):
 
     kf = KFold(n_splits=cv, shuffle=True, random_state=random_state)
     rmses = []
 
     for train_idx, val_idx in kf.split(X):
-        X_train_cv, X_val_cv = X[train_idx], X[val_idx]
-        y_train_cv, y_val_cv = y[train_idx], y[val_idx]
+        X_train_cv = X.iloc[train_idx]
+        X_val_cv   = X.iloc[val_idx]
+        y_train_cv = y.iloc[train_idx].values
+        y_val_cv   = y.iloc[val_idx].values
+
+        # preprocessing
+        X_train_cv, X_val_cv = preprocess_train_val(
+            X_train_cv, X_val_cv, num_cols, cat_cols
+        )
+
+        # convert after preprocessing
+        X_train_arr = np.array(X_train_cv, dtype=object)
+        X_val_arr   = np.array(X_val_cv, dtype=object)
 
         model = model_class(**model_kwargs)
-        model.fit(X_train_cv, y_train_cv)
-        preds = model.predict(X_val_cv)
+        model.fit(X_train_arr, y_train_cv)
+        preds = model.predict(X_val_arr)
 
-        mse = np.mean((y_val_cv - preds) ** 2)
-        rmse = np.sqrt(mse)
+        rmse = np.sqrt(np.mean((y_val_cv - preds) ** 2))
         rmses.append(rmse)
 
     return np.array(rmses)
 
+def evaluate_regression(y_true, y_pred):
+    """
+    Evaluate regression predictions with multiple metrics.
+    """
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = np.sqrt(mse)
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    
+    return {
+        "RMSE": rmse,
+        "MAE": mae,
+        "R2": r2,
+    }
 
 if __name__ == "__main__":
-    # Setup your independent and dependent variable
-    y = df_possum["footlgth"].copy()
+    df_possum = data_frames["possum"].drop(columns=["case"])
+
+    # drop missing target columns
+    df_possum = df_possum.dropna(subset=["footlgth"])
+
+    y = df_possum["footlgth"]
     X = df_possum.drop(columns=["footlgth"])
 
-    # indices of categorical columns in X
-    cat_features = [1, 2]
-
-    # ----- Cross-validation on full data -----
+    # define categorical and numeric columns
+    cat_cols = ["site", "sex", "Pop"]    
+    num_cols = list(X.columns.difference(cat_cols))
+    
+    cat_features = [X.columns.get_loc(c) for c in cat_cols]
+   
     cv_rmses = cross_val_rmse(
         RegTree,
         X,
         y,
+        num_cols=num_cols,
+        cat_cols=cat_cols,
         cv=5,
         random_state=42,
         max_depth=5,
         min_samples_split=2,
         cat_features=cat_features,
     )
-
     print("CV RMSEs:", cv_rmses)
     print("Mean CV RMSE:", cv_rmses.mean())
 
-    # Split the data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
 
-    print(f"Train shapes: X={X_train.shape}, y={y_train.shape}")
-    print(f"Test shapes:  X={X_test.shape},  y={y_test.shape}")
+    # preprocessing 
+    X_train, X_test = preprocess_train_val(
+        X_train, X_test, num_cols, cat_cols
+    )
 
-    # Set max depth and all features that are categorical
-    regressor = RegTree(max_depth=5, cat_features=[1,2])
+    # convert to numpy object arrays
+    X_train_arr = np.array(X_train, dtype=object)
+    X_test_arr  = np.array(X_test, dtype=object)
+
+    reg_tree = RegTree(max_depth=5, cat_features=cat_features)
     
     print("Training Regression Tree...")
-    regressor.fit(X_train, y_train)
-    X_test_arr = np.array(X_test) 
+    reg_tree.fit(X_train, y_train)
     
     # Predict the values
-    predictions = regressor.predict(X_test_arr)
+    preds = reg_tree.predict(X_test_arr)
 
-    # Create result df
-    results_df = pd.DataFrame(y_test).copy()
-    results_df.columns = ["real_values"] 
-    results_df["predicted_values"] = predictions
-
-    # Add Error column
-    results_df["Error"] = results_df["real_values"] - results_df["predicted_values"]
-    results_df["Squared_Error"] = results_df["Error"] ** 2
-
-    # Inspect the results
-    print(results_df.head(10))
-
-    # Calculate overall performance
-    mse = results_df["Squared_Error"].mean()
-    rmse = np.sqrt(mse)
-<<<<<<< HEAD
-    print("Regression Tree Test-RMSE:", rmse)
-=======
-    print(rmse)
->>>>>>> 49475f6487c1d78ec65c2b0dd94ad93303a91eeb
+    metrics = evaluate_regression(y_test.values, preds)
+    for k, v in metrics.items():
+        print(f"{k}: {v:.4f}")
