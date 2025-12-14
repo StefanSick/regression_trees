@@ -9,8 +9,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import (
     mean_squared_error,
     root_mean_squared_error,
-    r2_score,
-)
+    r2_score, mean_absolute_error)
+
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
@@ -96,7 +96,7 @@ models = [
         "RandomForest",
         RandomForestRegressor(random_state=random_state),
         {
-            "reg__n_estimators": [2, 5, 20],
+            "reg__n_estimators": [50, 100, 200],
             "reg__max_depth": [1, 5, 10],
             "reg__criterion": ["squared_error"],
             "reg__max_features": ["sqrt"],
@@ -159,9 +159,9 @@ def regression_fit(X_train, y_train, X_test, y_test, models, cv):
         yhat_test = best.predict(X_test)
         row.update(
             {
-                "test_MSE": mean_squared_error(y_test, yhat_test),
                 "test_RMSE": root_mean_squared_error(y_test, yhat_test),
                 "test_R2": r2_score(y_test, yhat_test),
+                "test_MAE":  mean_absolute_error(y_test, yhat_test),
             }
         )
 
