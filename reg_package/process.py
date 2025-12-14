@@ -17,17 +17,17 @@ def preprocess_train_val(X_train, X_val, num_cols, cat_cols):
 
     X_train = X_train.copy()
     X_val   = X_val.copy()
-
     # categorical
-    cat_imputer = SimpleImputer(strategy="most_frequent")
-    X_train[cat_cols] = cat_imputer.fit_transform(X_train[cat_cols])
-    X_val[cat_cols]   = cat_imputer.transform(X_val[cat_cols])
+    if cat_cols:
+            cat_imputer = SimpleImputer(strategy="most_frequent")
+            X_train[cat_cols] = cat_imputer.fit_transform(X_train[cat_cols])
+            X_val[cat_cols]   = cat_imputer.transform(X_val[cat_cols])
 
     # numeric
-    num_imputer = KNNImputer(n_neighbors=5)
-    X_train[num_cols] = num_imputer.fit_transform(X_train[num_cols])
-    X_val[num_cols]   = num_imputer.transform(X_val[num_cols])
-
+    if num_cols:
+        num_imputer = KNNImputer(n_neighbors=5)
+        X_train[num_cols] = num_imputer.fit_transform(X_train[num_cols])
+        X_val[num_cols]   = num_imputer.transform(X_val[num_cols])
     return X_train, X_val
 
 def cross_val_rmse(model_class, X, y, num_cols, cat_cols,
@@ -69,7 +69,9 @@ def train_eval_rf(name, df, target_col, cat_cols):
     y = df[target_col]
     X = df.drop(columns=[target_col])
     
-    num_cols = list(X.columns.difference(cat_cols))
+    num_cols = [c for c in X.columns if c not in cat_cols]
+    
+    # Get indices for categorical columns 
     cat_features_idx = [X.columns.get_loc(c) for c in cat_cols]
 
     # Split
@@ -165,17 +167,12 @@ def train_eval_tree(name, df, target_col, cat_cols, param_grid=None):
     y = df[target_col]
     X = df.drop(columns=[target_col])
 
-    if not cat_cols:
-        num_cols = list(X.columns)
-        cat_features_idx = []
-    else:
-        # Standard logic
-        num_cols = list(X.columns.difference(cat_cols))
-        cat_features_idx = [X.columns.get_loc(c) for c in cat_cols]
-    
-    
-    # Calculate index
+        
+    num_cols = [c for c in X.columns if c not in cat_cols]
+    # Get indices for categorical columns 
     cat_features_idx = [X.columns.get_loc(c) for c in cat_cols]
+    
+
 
     # Split
     X_train, X_test, y_train, y_test = train_test_split(
@@ -257,3 +254,17 @@ def train_eval_tree(name, df, target_col, cat_cols, param_grid=None):
         print(f"  {k}: {v:.4f}")
 
     return final_tree, results_df
+
+
+def drop_correlated(df, threshold):
+    """
+    Drop correlated columns
+    """
+    columns_to_drop = set()          
+    corr = df.corr()
+                      
+    for i in range(len(corr.columns)):
+        for j in range(i):            
+            if abs(corr.iloc[i, j]) > threshold:  
+                columns_to_drop.add(corr.columns[i])
+    return columns_to_drop
