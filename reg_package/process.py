@@ -30,9 +30,17 @@ def preprocess_train_val(X_train, X_val, num_cols, cat_cols):
         X_val[num_cols]   = num_imputer.transform(X_val[num_cols])
     return X_train, X_val
 
-def cross_val_rmse(model_class, X, y, num_cols, cat_cols,
-                  cv=5, random_state=42, **model_kwargs):
+def cross_val_rmse(model_class, X, y, num_cols, cat_cols, cv=5, random_state=42, **model_kwargs):
+    """
+    Performs K-Fold CV using RMSE, applying preprocessing inside the loop to prevent data leakage.
 
+    Args:
+        model_class: The uninstantiated model class (e.g., RandomForestRegressor).
+        **model_kwargs: Hyperparameters passed to the model (e.g., n_estimators=100).
+
+    Returns:
+        np.array: RMSE scores for each fold.
+    """
     kf = KFold(n_splits=cv, shuffle=True, random_state=random_state)
     rmses = []
 
@@ -62,6 +70,21 @@ def cross_val_rmse(model_class, X, y, num_cols, cat_cols,
 
 
 def train_eval_rf(name, df, target_col, cat_cols):
+    """
+    Performs a manual grid search for Random Forest hyperparameters and evaluates the best model.
+
+    Splits the data (80/20), iterates through parameter combinations using 5-fold CV to minimize RMSE, 
+    and retrains the winner on the full training set for final holdout evaluation.
+
+    Args:
+        name (str): Dataset label for logging.
+        df (pd.DataFrame): Full dataset containing the target.
+        target_col (str): Name of the column to predict.
+        cat_cols (list): List of categorical column names.
+
+    Returns:
+        tuple: (final_trained_model, results_dataframe)
+    """
     print(f"\n=== Processing Dataset: {name} ===")
     results_list = []
     # Setup
@@ -156,8 +179,22 @@ def train_eval_rf(name, df, target_col, cat_cols):
 
 def train_eval_tree(name, df, target_col, cat_cols, param_grid=None):
     """
-    Runs Grid Search CV and final evaluation for a single Regression Tree.
+    Optimizes a Regression Tree via grid search and evaluates performance.
+
+    Splits data (80/20), tunes hyperparameters (depth, splits, leaves) using 5-fold CV 
+    to minimize RMSE, and evaluates the best configuration on the test set.
+
+    Args:
+        name (str): Dataset label for logging.
+        df (pd.DataFrame): Full dataset.
+        target_col (str): Target column name.
+        cat_cols (list): Categorical column names.
+        param_grid (dict, optional): Custom hyperparameter grid.
+
+    Returns:
+        tuple: (final_trained_tree, results_dataframe)
     """
+    
     print(f"\n=== Processing Dataset: {name} ===")
     results_list = []
     
@@ -180,7 +217,7 @@ def train_eval_tree(name, df, target_col, cat_cols, param_grid=None):
     )
 
     param_grid = {
-        'max_depth': [3, 5, 10],
+        'max_depth': [10, 20, 30],
         'min_samples_split': [2, 5, 10],
         'min_samples_leaf': [1, 5]
     }

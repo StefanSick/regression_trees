@@ -20,7 +20,6 @@ for file_path in PATH_DATA.glob("*.csv"):
     print(f"Geladen: {key_name} -> Shape: {df.shape}")
 
 
-
 if __name__ == "__main__":
 
     # Possum Dataset
@@ -35,20 +34,18 @@ if __name__ == "__main__":
     file_path = PATH_OUTPUT / filename
     results_possum.to_csv(file_path, index=False)
 
+    # Student Dataset
+    student_tree, results_student = train_eval_tree(
+        name="Student",
+        df=data_frames["Student_Performance"],
+        target_col="Performance Index",
+        cat_cols=["Hours Studied", "Extracurricular Activities", "Sample Question Papers Practiced"]
+        )
 
-    # Household Dataset
-    household_data = data_frames["Household_Income"]
-    household_data["log_income"] = np.log1p(household_data['Income'])
-   
-    household_tree, results_household = train_eval_tree(
-        name="Household_Income",
-        df=data_frames["Household_Income"].drop(columns = ["Income"]), 
-        target_col="log_income",
-        cat_cols=["Education_Level", "Occupation", "Number_of_Dependents", "Location", "Marital_Status", "Employment_Status", "Household_Size", "Homeownership_Status", "Type_of_Housing", "Gender",  "Primary_Mode_of_Transportation"])
-
-    filename = f"household_tree.csv"
+    filename = f"student_tree.csv"
     file_path = PATH_OUTPUT / filename
-    results_household.to_csv(file_path, index=False)
+    results_possum.to_csv(file_path, index=False)
+
 
     # Cancer Dataset
     cancer_data = data_frames["cancer_reg"].drop(columns= ["pctsomecol18_24", "binnedinc", "geography"])

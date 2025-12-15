@@ -12,21 +12,38 @@ class Node:
         return self.value is not None
 
 class RegTree:
-    def __init__(self, max_depth=10, min_samples_split=2, min_samples_leaf=1, cat_features=None):
+    """
+    Regression Tree implementation using Mean Squared Error (MSE) reduction.
 
-        self.max_depth = max_depth # Max depth of tree
-        self.min_samples_split = min_samples_split # Threshold for split
+    Supports both numerical (<= split) and categorical (== split) features.
+    """
+    def __init__(self, max_depth=10, min_samples_split=2, min_samples_leaf=1, cat_features=None):
+        """
+        Args:
+            max_depth (int): Maximum depth of the tree.
+            min_samples_split (int): Minimum samples required to split a node.
+            min_samples_leaf (int): Minimum samples required at a leaf node.
+            cat_features (list): Indices of categorical features (uses equality splitting).
+        """
+        self.max_depth = max_depth 
+        self.min_samples_split = min_samples_split 
         self.min_samples_leaf = min_samples_leaf
-        self.cat_features = set(cat_features) if cat_features else set() # List of all categorical features
+        self.cat_features = set(cat_features) if cat_features else set() 
         self.root = None
 
     def fit(self, X, y):
-        # Use object so int and float works
+        """
+        Builds the regression tree using the training data.
+
+        Recursively splits data to minimize variance until stopping criteria (depth, 
+        min samples, or pure node) are met.
+        """
         X = np.array(X, dtype=object) 
         y = np.array(y, dtype=float)
         self.root = self._grow_tree(X, y)
 
     def _grow_tree(self, X, y, depth=0):
+        """Recursively builds tree nodes by finding the best split at each step."""
         n_samples, n_features = X.shape
 
         # If no samples, just return a leaf with value 0 (or some default)
@@ -55,6 +72,12 @@ class RegTree:
         return Node(feature=feat_idx, threshold=thresh, left=left, right=right)
 
     def _best_split(self, X, y, n_features):
+        """
+        Iterates through features and thresholds to find the split maximizing MSE reduction.
+        
+        Note: Uses percentiles [25, 50, 75] as thresholds if a feature has >100 unique values 
+        to speed up training.
+        """
         best_reduction = -1
         split_idx, split_thresh = None, None
         
@@ -84,7 +107,7 @@ class RegTree:
         return split_idx, split_thresh
 
     def _mse_reduction(self, y, X_column, threshold, parent_mse, feat_idx):
-        # Split
+        """Calculates the reduction in MSE for a potential split."""
         left_idxs, right_idxs = self._split(X_column, threshold, feat_idx)
 
         if len(left_idxs) < self.min_samples_leaf or len(right_idxs) < self.min_samples_leaf:
@@ -107,6 +130,13 @@ class RegTree:
         return np.mean((y - mean_y) ** 2)
 
     def _split(self, X_column, threshold, feat_idx):
+        """
+        Splits data indices based on feature type.
+        
+        Returns:
+            left_idxs, right_idxs: Indices for children nodes. 
+            Uses (val <= thresh) for numerical and (val == thresh) for categorical.
+        """
         if feat_idx in self.cat_features:
             # Equality Split for Categorical
             left_idxs = np.where(X_column == threshold)[0]

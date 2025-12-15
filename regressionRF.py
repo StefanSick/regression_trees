@@ -27,23 +27,22 @@ if __name__ == "__main__":
     target_col="footlgth",
     cat_cols=["site", "sex", "Pop"])
 
-    filename = f"possum_results.csv"
+    filename = f"possum_rf.csv"
     file_path = PATH_OUTPUT / filename
     results_possum.to_csv(file_path, index=False)
     
-    # Household dataset
-    household_data = data_frames["Household_Income"]
-    household_data["log_income"] = np.log1p(household_data['Income']).drop(columns = ["Income"])
-   
-    rf_household, results_household = train_eval_rf(
-    name="Household_Income",
-    df=data_frames["Household_Income"].drop(columns = ["Income"]), 
-    target_col="log_income",
-    cat_cols=["Education_Level", "Occupation", "Number_of_Dependents", "Location", "Marital_Status", "Employment_Status", "Household_Size", "Homeownership_Status", "Type_of_Housing", "Gender",  "Primary_Mode_of_Transportation"])
-    
-    filename = f"household_results.csv"
+    # Student dataset
+    student_tree, results_student = train_eval_rf(
+    name="Student",
+    df=data_frames["Student_Performance"],
+    target_col="Performance Index",
+    cat_cols=["Hours Studied", "Extracurricular Activities", "Sample Question Papers Practiced"]
+    )
+
+    filename = f"student_rf.csv"
     file_path = PATH_OUTPUT / filename
-    results_household.to_csv(file_path, index=False)
+    results_student.to_csv(file_path, index=False)
+
 
     # Cancer dataset
     cancer_data = data_frames["cancer_reg"].drop(columns= ["pctsomecol18_24", "binnedinc", "geography"])
@@ -60,7 +59,7 @@ if __name__ == "__main__":
     target_col="log_deathrate",
     cat_cols=[])
     
-    filename = f"cancer_results.csv"
+    filename = f"cancer_rf.csv"
     file_path = PATH_OUTPUT / filename
     results_cancer.to_csv(file_path, index=False)
-    data_frames["cancer_reg"]
+   
